@@ -1,0 +1,4 @@
+nest_asyncio
+xarray
+paramiko
+netCDF4
