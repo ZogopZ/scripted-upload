@@ -6,9 +6,10 @@ import subprocess
 
 
 monthly_collections = dict()
+yearly_collection = dict()
 
 
-def extract_collections(archive=None, interval=None):
+def extract_monthly_collections(archive=None):
     # Collect members from each component's monthly dataset.
     # Each new collection will contain 5 components per month.
     for monthly_key, monthly_component in archive.items():
@@ -81,9 +82,43 @@ def extract_collections(archive=None, interval=None):
     return
 
 
-def archive_json_curl():
+def extract_yearly_collections(archive=None):
+    year = '2022'
+    members = dict()
+    # Collect members for a yearly collection.
+    for monthly_key, collection_content in archive.items():
+        month = monthly_key[4:]
+        members[month] = collection_content['file_metadata_url']
+    sorted_members = [members[i] for i in sorted(members.keys())]
+    # Archive collection's meta-data.
+    yearly_collection[year] = dict()
+    yearly_collection[year]['json'] = {
+        "description": f"Yearly collection of hourly CO2 fluxes for {year}, containing hourly estimates of biospheric fluxes, anthropogenic emissions (total and per sector), GFAS fire emissions and Jena CarboScope ocean fluxes, all re-gridded to match the resolution of the biospheric fluxes.\n\nNet ecosystem productivity (gross primary production minus respiration). Positive fluxes are emissions, negative mean uptake. These fluxes are the result of the SiB4 (Version 4.2-COS, hash 1e29b25, https://doi.org/10.1029/2018MS001540) biosphere model, driven by ERA5 reanalysis data at a 0.5x0.5 degree resolution. The NEP per plant functional type are distributed according to the high resolution CORINE land-use map (https://land.copernicus.eu/pan-european/corine-land-cover), and aggregated to CTE-HR resolution.\n\nAnthropogenic emissions include contributions from public power, industry, households, ground transport, aviation, shipping, and calcination of cement. Our product does not include carbonation of cement and human respiration. Public power is based on ENTSO-E data (https://transparency.entsoe.eu/), Industry, Ground transport, Aviation, and Shipping is based on Eurostat data (https://ec.europa.eu/eurostat/databrowser/). Household emissions are based on a degree-day model, driven by ERA5 reanalysis data. Spatial distributions of the emissions are based on CAMS data (https://doi.org/10.5194/essd-14-491-2022). Cement emissions are taken from GridFED V.2021.3 (https://zenodo.org/record/5956612#.YoTmvZNBy9F).\n\nGFAS fire emissions (https://doi.org/10.5194/acp-18-5359-2018), re-gridded to match the resolution of the biosphere, fossil fuel, and ocean fluxes of the CTE-HR product. Please always cite the original GFAS data when using this file, and use the original data when only fire emissions are required. For more information, see https://doi.org/10.5281/zenodo.6477331 Contains modified Copernicus Atmosphere Monitoring Service Information [2020].\n\nOcean fluxes, based on a climatology of Jena CarboScope fluxes (https://doi.org/10.17871/CarboScope-oc_v2020, https://doi.org/10.5194/os-9-193-2013). An adjustment, based on windspeed and temperature, is applied to obtain hourly fluxes at the CTE-HR resolution. Positive fluxes are emissions and negative fluxes indicate uptake. Please always cite the original Jena CarboScope data when using this file, and use the original data when only low resolution ocean fluxes are required.\n\nFor more information, see https://doi.org/10.5281/zenodo.6477331",
+        "members": sorted_members,
+        "submitterId": "CP",
+        "title": f"High-resolution, near-real-time fluxes over Europe from CTE-HR for {year}"
+    }
+    # Archive meta-data for each collection.
+    json_file_name = f'{year}.json'
+    json_file_path = os.path.join(constants.JSON_FILES_DIR, json_file_name)
+    yearly_collection[year]['json_file_path'] = json_file_path
+    tools.write_json(path=json_file_path, content=yearly_collection[year]['json'])
+    metadata_curl_command_list = \
+        ["curl", "-s", "--cookie", "cookies.txt", "-H",
+         '"Content-Type: application/json"',
+         "-X", "POST",
+         "-d", f"@{yearly_collection[year]['json_file_path']}",
+         "https://meta.icos-cp.eu/upload"]
+    yearly_collection[year]['curl'] = dict({
+        'metadata_using_bash': ' '.join(metadata_curl_command_list),
+        'metadata_using_python': metadata_curl_command_list
+    })
+    return
+
+
+def archive_json_curl(archive=None):
     print(f'- {constants.GEAR_ICON} Archiving json curl commands for collections... ', end='')
-    for collection_key, collection_info in monthly_collections.items():
+    for collection_key, collection_info in collection.items():
         metadata_curl_command_list = \
             ["curl", "-s", "--cookie", "cookies.txt", "-H",
              '"Content-Type: application/json"',
@@ -100,8 +135,8 @@ def archive_json_curl():
 
 def upload_collections():
     print(f'- {constants.GEAR_ICON} Uploading collections '
-          f'(Expecting {len(monthly_collections.items())} checks)... ', end='')
-    for collection_key, collection_info in monthly_collections.items():
+          f'(Expecting {len(yearly_collection.items())} checks)... ', end='')
+    for collection_key, collection_info in yearly_collection.items():
         process = subprocess.Popen(collection_info['curl']['metadata_using_bash'],
                                    stdout=subprocess.PIPE, shell=True)
         output, error = process.communicate()
@@ -121,9 +156,15 @@ def upload_collections():
 
 
 if __name__ == '__main__':
-    archive_in = tools.read_json(path='archive_in_nc.json')
-    extract_collections(archive=archive_in, interval='monthly')
-    archive_json_curl()
+    # archive_in = tools.read_json(path='archive_in_nc.json')
+    # extract_monthly_collections(archive=archive_in)
+    # archive_json_curl()
+    # tools.check_permissions()
+    # upload_collections()
+    # tools.write_json(path='monthly_collections.json', content=monthly_collections)
+
+    archive_in = tools.read_json(path='monthly_collections.json')
+    extract_yearly_collections(archive=archive_in)
     tools.check_permissions()
     upload_collections()
-    tools.write_json(path='monthly_collections.json', content=monthly_collections)
+    tools.write_json(path='yearly_collection.json', content=yearly_collection)
